@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using System.Reflection;
 
 namespace MarkdownMode
 {
@@ -35,6 +36,16 @@ namespace MarkdownMode
             }
 
             return Path.Combine(basePath.FullName, relativePath);
+        }
+
+        public static string GetLocation(this Assembly self)
+        {
+            if (self == null)
+            {
+                return null;
+            }
+
+            return Path.GetDirectoryName(self.Location);
         }
     }
 }

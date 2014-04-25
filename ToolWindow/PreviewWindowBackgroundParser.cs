@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.VisualStudio.Text;
@@ -8,8 +9,10 @@ namespace MarkdownMode
 {
     internal class PreviewWindowBackgroundParser : BackgroundParser
     {
-        readonly MarkdownSharp.Markdown markdownTransform = new MarkdownSharp.Markdown();
-        readonly string markdownDocumentPath;
+        private static string MarkdownCssPath;
+
+        private readonly MarkdownSharp.Markdown markdownTransform = new MarkdownSharp.Markdown();
+        private readonly string markdownDocumentPath;
 
         public PreviewWindowBackgroundParser(ITextBuffer textBuffer, TaskScheduler taskScheduler, ITextDocumentFactoryService textDocumentFactoryService)
             : base(textBuffer, taskScheduler, textDocumentFactoryService)
@@ -20,6 +23,19 @@ namespace MarkdownMode
             if (textDocumentFactoryService.TryGetTextDocument(textBuffer, out markdownDocument))
             {
                 markdownDocumentPath = markdownDocument.FilePath;
+            }
+
+            if (MarkdownCssPath == null)
+            {
+                string installPath = this.GetType().Assembly.GetLocation();
+                if (installPath != null)
+                {
+                    string cssPath = Path.Combine(installPath, "Markdown.css");
+                    if (File.Exists(cssPath))
+                    {
+                        MarkdownCssPath = new Uri(cssPath).ToString();
+                    }
+                }
             }
         }
 
@@ -34,7 +50,10 @@ namespace MarkdownMode
         string GetHTMLText(string text, bool extraSpace)
         {
             StringBuilder html = new StringBuilder();
-            html.AppendLine("<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"></head><body>");
+            html.AppendLine("<html><head>")
+                .AppendLine("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\">")
+                .AppendFormat("<link rel='stylesheet' href='{0}'/>", MarkdownCssPath).AppendLine()
+                .AppendLine("</head><body>");
             html.AppendLine(markdownTransform.Transform(text, markdownDocumentPath));
             if (extraSpace)
             {
