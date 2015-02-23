@@ -95,6 +95,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Reflection;
+using System.Linq;
 
 namespace MarkdownSharp
 {
@@ -379,10 +381,8 @@ namespace MarkdownSharp
 
         internal static Regex HeaderAtxRegex = new Regex(@"
                 ^(\#{1,6})  # $1 = string of #'s
-                [ \t]*
+                [ \t]+
                 (.+?)       # $2 = Header text
-                [ \t]*
-                \#*         # optional closing #'s (not counted)
                 (?:\z|\n+)",
             RegexOptions.Multiline | RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled);
 
@@ -436,6 +436,8 @@ namespace MarkdownSharp
         
         // Code
 
+        internal static Regex CodeFenceRegex = new Regex(@"(?:\r\n)*^ *(`{3,}|~{3,}) *(\S+)? *\n([\s\S]+?)\s*\1 *(?:\n+|$)", RegexOptions.Multiline | RegexOptions.Compiled);
+
         internal static Regex CodeBlockRegex = new Regex(string.Format(@"
                     (?:\n\n|\A)
                     (                        # $1 = the code block -- one or more lines, starting with a space/tab
@@ -456,6 +458,15 @@ namespace MarkdownSharp
                     \1
                     (?!`)", RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline | RegexOptions.Compiled);
 
+        // Github Tables
+        internal static Regex TablesNoPipeRegex = new Regex(@"^ *(\S.*\|.*)\n *([-:]+ *\|[-| :]*)\n((?:.*\|.*(?:\n|$))*)\n*", RegexOptions.Multiline | RegexOptions.Compiled);
+        internal static Regex TablesPipeRegex = new Regex(@"^ *\|(.+)\n *\|( *[-:]+[-| :]*)\n((?: *\|.*(?:\n|$))*)\n*", RegexOptions.Multiline | RegexOptions.Compiled);
+        
+        // Includes
+        internal static Regex IncludesRegex = new Regex(@"^\[AZURE\.INCLUDE \[[\w- ]+\]\((\.\.\/includes\/[\w-]*\.md)\)\]$", RegexOptions.Multiline | RegexOptions.Compiled);
+
+        // Video
+        internal static Regex VideoRegex = new Regex(@"^\[AZURE\.VIDEO (.+)\]$", RegexOptions.Multiline | RegexOptions.Compiled);
 
         // HTML
 
@@ -637,6 +648,16 @@ namespace MarkdownSharp
         }
 
         /// <summary>
+        /// When true, does not render the include start and end divs.
+        /// </summary>
+        public bool HideIncludeDivs { get; set; }
+
+        /// <summary>
+        /// When true, does not pull in content from an included article.
+        /// </summary>
+        public bool SkipIncludes { get; set; }
+
+        /// <summary>
         /// Transforms the provided Markdown-formatted text to HTML;
         /// see http://en.wikipedia.org/wiki/Markdown
         /// </summary>
@@ -695,7 +716,9 @@ namespace MarkdownSharp
             text = DoLists(text);
             text = DoCodeBlocks(text);
             text = DoBlockQuotes(text);
-
+            text = DoTables(text);
+            //text = DoVideo(text);
+            text = DoIncludes(text);
             // We already ran HashHTMLBlocks() before, in Markdown(), but that
             // was to escape raw HTML in the original Markdown source. This time,
             // we're escaping the markup we've just created, so that we don't wrap
@@ -1309,12 +1332,23 @@ namespace MarkdownSharp
         }
 
         /// <summary>
-        /// /// Turn Markdown 4-space indented block into HTML pre block blocks
+        /// Turn Markdown 4-space indented block into HTML pre block blocks
         /// </summary>
         private string DoCodeBlocks(string text)
         {
+            text = CodeFenceRegex.Replace(text, new MatchEvaluator(CodeFenceEvaluator));
             text = CodeBlockRegex.Replace(text, new MatchEvaluator(CodeBlockEvaluator));
             return text;
+        }
+
+        private string CodeFenceEvaluator(Match match)
+        {
+            string codeBlock = match.Groups[3].Value;
+
+            codeBlock = EncodeCode(codeBlock);
+            codeBlock = _newlinesLeadingTrailing.Replace(codeBlock, "");
+
+            return string.Concat("\n\n<pre>", codeBlock, "\n</pre>\n\n");
         }
 
         private string CodeBlockEvaluator(Match match)
@@ -1325,7 +1359,7 @@ namespace MarkdownSharp
             codeBlock = Detab(codeBlock);
             codeBlock = _newlinesLeadingTrailing.Replace(codeBlock, "");
 
-            return string.Concat("\n\n<pre><code>", codeBlock, "\n</code></pre>\n\n");
+            return string.Concat("\n\n<pre>", codeBlock, "\n</pre>\n\n");
         }
 
         /// <summary>
@@ -1429,6 +1463,150 @@ namespace MarkdownSharp
         {
             return BlockquoteRegex.Replace(text, new MatchEvaluator(BlockQuoteEvaluator));
         }
+        
+        /// <summary>
+        /// Turn github flavored tables into HTML tables
+        /// </summary>
+        private string DoTables(string text)
+        {
+            // Handle piped tables first
+            text = TablesPipeRegex.Replace(text, new MatchEvaluator(TablePipeEvaluator));
+
+            // Look for unpiped tables
+            return TablesPipeRegex.Replace(text, new MatchEvaluator(TablePipeEvaluator));
+        }
+
+        public enum TableColumnAlignment
+        {
+            NotSpecified,
+            Left,
+            Center,
+            Right
+        }
+
+        private string TablePipeEvaluator(Match match)
+        {
+            string table = match.Groups[0].Value;
+
+            var lines = _entireLines.Matches(table).Cast<Match>().ToArray();
+
+            // We have a valid table
+            if (lines.Length >= 3)
+            {
+                const string cellTemplate = "<td{1}>{0}</td>";
+                const string headerCellTemplate = "<td{1}>{0}</td>";
+                StringBuilder headerString = new StringBuilder();
+                StringBuilder dataString = new StringBuilder();
+                
+                // Handle column alignment
+                string columnList = Regex.Replace(lines[1].Value, @"^ *\| *| *\| *$", "", RegexOptions.Multiline);
+                var columnListItems = Regex.Replace(columnList, @"(?<!\\)(?: *\| *)", "$$$$|$$$$").Split(new string[] { "$$|$$" }, StringSplitOptions.None);
+                TableColumnAlignment[] columns = new TableColumnAlignment[columnListItems.Length];
+
+                for (int i = 0; i < columnListItems.Length; i++)
+                {
+                    if (columnListItems[i].StartsWith(":") && columnListItems[i].EndsWith(":"))
+                        columns[i] = TableColumnAlignment.Center;
+                    else if (columnListItems[i].StartsWith(":"))
+                        columns[i] = TableColumnAlignment.Left;
+                    else if (columnListItems[i].EndsWith(":"))
+                        columns[i] = TableColumnAlignment.Right;
+                    else
+                        columns[i] = TableColumnAlignment.NotSpecified;
+                }
+
+                
+                // handle the header
+                string header = Regex.Replace(lines[0].Value, @"^ *\| *| *\| *$", "", RegexOptions.Multiline);
+                header = ProcessTableRow(header, headerCellTemplate, columns);
+
+
+
+                for (int i = 2; i < lines.Length; i++)
+                {
+                    if (!String.IsNullOrEmpty(lines[i].Value.Trim()))
+                        dataString.AppendLine(ProcessTableRow(Regex.Replace(lines[i].Value, @"^ *\| *| *\| *$", "", RegexOptions.Multiline), cellTemplate, columns));
+                }
+
+                return String.Format("<table>\n<thead>\n{0}</thead>\n<tbody>\n{1}</tbody>\n</table>", header, dataString.ToString());
+            }
+
+            return table;
+        }
+
+        private string ProcessTableRow(string line, string cellTemplate, TableColumnAlignment[] columns)
+        {
+            const string rowTemplate = "<tr>\n{0}</tr>";
+            StringBuilder result = new StringBuilder();
+            string[] cells = Regex.Replace(line, @"(?<!\\)(?: *\| *)", "$$$$|$$$$").Split(new string[] {"$$|$$"}, StringSplitOptions.None);
+
+            for (int i = 0; i < cells.Length; i++)
+            {
+                if (i < columns.Length)
+                {
+                    switch (columns[i])
+                    {
+                        case TableColumnAlignment.Left:
+                            result.AppendLine(String.Format(cellTemplate, cells[i], " align=\"left\""));
+                            break;
+                        case TableColumnAlignment.Center:
+                            result.AppendLine(String.Format(cellTemplate, cells[i], " align=\"center\""));
+                            break;
+                        case TableColumnAlignment.Right:
+                            result.AppendLine(String.Format(cellTemplate, cells[i], " align=\"right\""));
+                            break;
+                        default:
+                            result.AppendLine(String.Format(cellTemplate, cells[i], ""));
+                            break;
+                    }
+                }
+                else
+                    result.AppendLine(String.Format(cellTemplate, cells[i], ""));
+            }
+
+            return String.Format(rowTemplate, result.ToString());
+        }
+
+        //private string DoVideo(string text)
+        //{
+        //    return VideoRegex.Replace(text, new MatchEvaluator(VideoEvaluator));
+        //}
+
+        private string DoIncludes(string text)
+        {
+            return IncludesRegex.Replace(text, new MatchEvaluator(IncludesEvaluator));
+        }
+        private string IncludesEvaluator(Match match)
+        {
+            string includeFile = match.Groups[1].Value;
+
+            Markdown processor = new Markdown();
+
+            string filePath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(_filePath), includeFile);
+
+            if (System.IO.File.Exists(filePath))
+            {
+                if (!SkipIncludes)
+                {
+
+                    if (!HideIncludeDivs)
+                        return string.Format("\n\n<div class=\"wa-include-start\">\nSTART OF INCLUDE: {0}\n</div>\n\n{1}\n<div class=\"wa-include-end\">END OF INCLUDE {0}</div>\n", includeFile, processor.Transform(System.IO.File.ReadAllText(filePath), filePath));
+                    else
+                        return string.Format("\n{0}\n", processor.Transform(System.IO.File.ReadAllText(filePath), filePath));
+                }
+                else
+                    return string.Format("\n\n<div class=\"wa-include-start\">\nINCLUDE: {0}\n</div>\n", includeFile);
+            }
+            else
+                return "\n<div class=\"wa-include-missing\">[AZURE.INCLUDE] Missing Include File: " + includeFile + "</div>\n";
+        }
+
+        //private string VideoEvaluator(Match match)
+        //{
+        //    string videoid = match.Groups[1].Value;
+
+        //    return @"<div class=""wa.video"" width=""360"" height=""203"" alt=""" + videoid + @""">" + videoid + "</div>";
+        //}
 
         private string BlockQuoteEvaluator(Match match)
         {
@@ -1436,14 +1614,95 @@ namespace MarkdownSharp
 
             bq = Regex.Replace(bq, @"^[ \t]*>[ \t]?", "", RegexOptions.Multiline);   // trim one level of quoting
             bq = Regex.Replace(bq, @"^[ \t]+$", "", RegexOptions.Multiline);         // trim whitespace-only lines
-            bq = RunBlockGamut(bq);                                                  // recurse
 
-            bq = Regex.Replace(bq, @"^", "  ", RegexOptions.Multiline);
 
-            // These leading spaces screw with <pre> content, so we need to fix that:
-            bq = Regex.Replace(bq, @"(\s*<pre>.+?</pre>)", new MatchEvaluator(BlockQuoteEvaluator2), RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline);
 
-            return string.Format("<blockquote>\n{0}\n</blockquote>\n\n", bq);
+
+            if (bq.StartsWith("[AZURE."))
+            {
+                int startLength = 7;
+
+                string tipClass = bq.Substring("[AZURE.".Length, bq.IndexOf(']') - "[AZURE.".Length);
+                //Guid id = new Guid();
+                //string installPath = this.GetType().Assembly.GetLocation();
+                //File.WriteAllText(Path.Combine(installPath, id + ".txt"), tipClass);
+
+                if (tipClass.StartsWith("VIDEO "))
+                {
+                    try
+                    {
+                        string videoid = bq.Substring(startLength + 1).Substring(5).TrimEnd(']', '\n').Trim();
+                        return "\n<div class=\"wa-video\">VIDEO PLACEHOLDER<p/>" + videoid + "</div>\n";
+                    }
+                    catch (Exception)
+                    {
+                        return string.Format("\n{0}\n", bq);
+                    }
+                    
+                }
+                else if (tipClass == "SELECTOR")
+                {
+                    try
+                    {
+                        string[] lines = bq.Split('\n');
+
+                        if (lines.Length > 1)
+                        {
+                            StringBuilder html = new StringBuilder();
+                            html.Append("\n<div class=\"dev-center-tutorial-selector sublanding\">\n");
+                            foreach (var item in lines)
+                            {
+                                string processedLine = item.Trim();
+                                if (processedLine.StartsWith("-"))
+                                {
+                                    processedLine = AnchorInlineRegex.Replace(processedLine.Substring(1).Trim(), new MatchEvaluator(AnchorInlineEvaluator));
+                                    html.Append(processedLine + "\n");
+                                }
+                            }
+                            html.Append("</div>\n");
+                            return html.ToString();
+                        }
+                        else
+                        {
+                            return string.Format("\n{0}\n", bq);
+                        }
+                        
+                    }
+                    catch (Exception)
+                    {
+                        return string.Format("\n{0}\n", bq);
+                    }
+
+                }
+                else
+                {
+                    try
+                    {
+                        bq = bq.Substring(startLength + 1 + tipClass.Length);
+                        bq = string.Format("<div class=\"wa-note wa-note-{0}\"><span class=\"wa-icon wa-icon-{0}\"></span><h5><a name=\"{0}\"></a>{1}:</h5>{2}</div>", tipClass.ToLower(), tipClass, RunBlockGamut(bq));
+                        bq = Regex.Replace(bq, @"^", "  ", RegexOptions.Multiline);
+
+                        // These leading spaces screw with <pre> content, so we need to fix that:
+                        bq = Regex.Replace(bq, @"(\s*<pre>.+?</pre>)", new MatchEvaluator(BlockQuoteEvaluator2), RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline);
+                        return string.Format("\n{0}\n", bq);
+                    }
+                    catch (Exception)
+                    {
+                        return string.Format("\n{0}\n", bq);
+                    }
+
+
+                }
+            }
+            else
+            {
+                bq = RunBlockGamut(bq);                                                  // recurse
+                bq = Regex.Replace(bq, @"^", "  ", RegexOptions.Multiline);
+
+                // These leading spaces screw with <pre> content, so we need to fix that:
+                bq = Regex.Replace(bq, @"(\s*<pre>.+?</pre>)", new MatchEvaluator(BlockQuoteEvaluator2), RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline);
+                return string.Format("<blockquote>\n{0}\n</blockquote>\n\n", bq);
+            }
         }
 
         private string BlockQuoteEvaluator2(Match match)

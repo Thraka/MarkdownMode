@@ -37,11 +37,11 @@ namespace MarkdownMode
             {
                 if (scrollBackTo.HasValue)
                 {
-                    var document = browser.Document as mshtml.IHTMLDocument2;
+                    var document = browser.Document as mshtml.IHTMLDocument3;
 
                     if (document != null)
                     {
-                        var element = document.body as mshtml.IHTMLElement2;
+                        var element = document.documentElement as mshtml.IHTMLElement2;
                         if (element != null)
                         {
                             element.scrollTop = scrollBackTo.Value;
@@ -115,6 +115,8 @@ namespace MarkdownMode
                 return;
             }
 
+
+
             bool sameSource = source == this.source;
             this.source = source;
             this.html = html;
@@ -132,12 +134,15 @@ namespace MarkdownMode
                 // so the current scroll position isn't ready for us to use.  Just use the existing scroll position.
                 if (!scrollBackTo.HasValue)
                 {
-                    var document = browser.Document as mshtml.IHTMLDocument2;
+                    var document = browser.Document as mshtml.IHTMLDocument3;
                     if (document != null)
                     {
-                        var element = document.body as mshtml.IHTMLElement2;
+
+                        var element = document.documentElement as mshtml.IHTMLElement2;
                         if (element != null)
                         {
+                            //var position = browser.InvokeScript("getVerticalScrollPosition");
+                            //scrollBackTo = element.scrollTop;
                             scrollBackTo = element.scrollTop;
                         }
                     }

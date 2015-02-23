@@ -1,6 +1,22 @@
-﻿using System.IO;
+﻿using System.Reflection;
 
-namespace MarkdownMode
+namespace System.Reflection
+{
+    internal static class Extensions
+    {
+        public static string GetLocation(this Assembly self)
+        {
+            if (self == null)
+            {
+                return null;
+            }
+
+            return System.IO.Path.GetDirectoryName(self.Location);
+        }
+    }
+}
+
+namespace System.IO
 {
     internal static class Extensions
     {

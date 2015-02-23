@@ -52,6 +52,13 @@ namespace MarkdownMode
 
             this.Children.Add(sectionCombo);
 
+            var toggleIncludes = new CheckBox() { Content = "Hide Includes" };
+            toggleIncludes.VerticalAlignment = System.Windows.VerticalAlignment.Center;
+            toggleIncludes.IsChecked = MarkdownSettings.SkipIncludeProcessing;
+            toggleIncludes.Checked += toggleIncludes_Checked;
+            toggleIncludes.Unchecked += toggleIncludes_Checked;
+            this.Children.Add(toggleIncludes);
+
             backgroundParser = textView.TextBuffer.Properties.GetOrCreateSingletonProperty(typeof(MarkdownBackgroundParser),
                 () => new MarkdownBackgroundParser(textView.TextBuffer, TaskScheduler.Default, textDocumentFactoryService));
 
@@ -61,6 +68,16 @@ namespace MarkdownMode
 
             textView.Closed += HandleTextViewClosed;
             textView.Caret.PositionChanged += HandleTextViewCaretPositionChanged;
+        }
+
+        
+
+        void toggleIncludes_Checked(object sender, RoutedEventArgs e)
+        {
+            if (((CheckBox)sender).IsChecked.HasValue)
+            {
+                MarkdownSettings.SkipIncludeProcessing = ((CheckBox)sender).IsChecked.Value;
+            }
         }
 
         void HandleShowPreviewClick(object sender, EventArgs e)
