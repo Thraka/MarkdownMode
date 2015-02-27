@@ -12,7 +12,12 @@ namespace MarkdownMode
     [Guid("acd82a5f-9c35-400b-b9d0-f97925f3b312")]
     public class MarkdownPreviewToolWindow : ToolWindowPane
     {
-        private readonly WebBrowser browser;
+        private WebBrowser browser;
+        private Grid parentPanel;
+        private MenuItem menuImagesHide = new MenuItem();
+        private MenuItem menuImagesSkip = new MenuItem();
+        private MenuItem menuIncludesSkip = new MenuItem();
+        private MenuItem menuIncludesHide = new MenuItem();
 
         object source;
         string html;
@@ -30,6 +35,51 @@ namespace MarkdownMode
             this.Caption = "Markdown Preview";
             this.BitmapResourceID = 301;
             this.BitmapIndex = 1;
+
+            parentPanel = new Grid();
+            parentPanel.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
+            parentPanel.RowDefinitions.Add(new RowDefinition() { Height = new GridLength(1, GridUnitType.Star) });
+
+            Menu menu = new Menu();
+
+            MenuItem menuParentImages = new MenuItem();
+            menuParentImages.Header = "Images";
+
+            MenuItem menuParentIncludes = new MenuItem();
+            menuParentIncludes.Header = "Includes";
+
+            MenuItem menuCopyHTML = new MenuItem();
+            menuCopyHTML.Header = "Copy HTML";
+            menuCopyHTML.Click += (sender, e) => { Clipboard.SetText(html); };
+
+            menu.Items.Add(menuParentImages);
+            menu.Items.Add(menuParentIncludes);
+            menu.Items.Add(menuCopyHTML);
+
+            menuImagesHide.Header = "Hide";
+            menuImagesHide.IsCheckable = true;
+            menuImagesHide.Checked += menuImagesHide_Checked;
+            menuImagesHide.Unchecked += menuImagesHide_Checked;
+            menuParentImages.Items.Add(menuImagesHide);
+
+            
+            menuImagesSkip.Header = "Skip";
+            menuImagesSkip.IsCheckable = true;
+            menuImagesSkip.Checked += menuImagesSkip_Checked;
+            menuImagesSkip.Unchecked += menuImagesSkip_Checked;
+            menuParentImages.Items.Add(menuImagesSkip);
+
+            menuIncludesSkip.Header = "Skip";
+            menuIncludesSkip.IsCheckable = true;
+            menuIncludesSkip.Checked += menuIncludesSkip_Checked;
+            menuIncludesSkip.Unchecked += menuIncludesSkip_Checked;
+            menuParentIncludes.Items.Add(menuIncludesSkip);
+
+            menuIncludesHide.Header = "Hide Divs";
+            menuIncludesHide.IsCheckable = true;
+            menuIncludesHide.Checked += menuIncludesHide_Checked;
+            menuIncludesHide.Unchecked += menuIncludesHide_Checked;
+            menuParentIncludes.Items.Add(menuIncludesHide);
 
             browser = new WebBrowser();
             browser.NavigateToString(EmptyWindowHtml);
@@ -76,11 +126,75 @@ namespace MarkdownMode
                     VsShellUtilities.OpenDocument(this, documentName);
                     args.Cancel = true; // open matching document
                 };
+
+            Grid.SetRow(menu, 0);
+            Grid.SetRow(browser, 1);
+
+            parentPanel.Children.Add(menu);
+            parentPanel.Children.Add(browser);
+
+            
+        }
+
+        void menuIncludesHide_Checked(object sender, RoutedEventArgs e)
+        {
+            if (menuIncludesHide.IsChecked)
+            {
+                menuIncludesSkip.Checked -= menuIncludesSkip_Checked;
+                menuIncludesSkip.IsChecked = !menuIncludesHide.IsChecked;
+                menuIncludesSkip.Checked += menuIncludesSkip_Checked;
+            }
+
+            MarkdownSettings.HideIncludeDivs = menuIncludesHide.IsChecked;
+            MarkdownSettings.SkipIncludeProcessing = menuIncludesSkip.IsChecked;
+            MarkdownSettings.Parser.RequestParse(true);
+        }
+
+        void menuIncludesSkip_Checked(object sender, RoutedEventArgs e)
+        {
+            if (menuIncludesSkip.IsChecked)
+            {
+                menuIncludesHide.Checked -= menuIncludesHide_Checked;
+                menuIncludesHide.IsChecked = !menuIncludesSkip.IsChecked;
+                menuIncludesHide.Checked += menuIncludesHide_Checked;
+            }
+
+            MarkdownSettings.HideIncludeDivs = menuIncludesHide.IsChecked;
+            MarkdownSettings.SkipIncludeProcessing = menuIncludesSkip.IsChecked;
+            MarkdownSettings.Parser.RequestParse(true);
+        }
+
+        void menuImagesSkip_Checked(object sender, RoutedEventArgs e)
+        {
+            if (menuImagesSkip.IsChecked)
+            {
+                menuImagesHide.Checked -= menuImagesHide_Checked;
+                menuImagesHide.IsChecked = !menuImagesSkip.IsChecked;
+                menuImagesHide.Checked += menuImagesHide_Checked;
+            }
+
+            MarkdownSettings.HideImages = menuImagesHide.IsChecked;
+            MarkdownSettings.SkipImages = menuImagesSkip.IsChecked;
+            MarkdownSettings.Parser.RequestParse(true);
+        }
+
+        void menuImagesHide_Checked(object sender, RoutedEventArgs e)
+        {
+            if (menuImagesHide.IsChecked)
+            {
+                menuImagesSkip.Checked -= menuImagesSkip_Checked;
+                menuImagesSkip.IsChecked = !menuImagesHide.IsChecked;
+                menuImagesSkip.Checked += menuImagesSkip_Checked;
+            }
+
+            MarkdownSettings.SkipImages = menuImagesSkip.IsChecked;
+            MarkdownSettings.HideImages = menuImagesHide.IsChecked;
+            MarkdownSettings.Parser.RequestParse(true);
         }
 
         public override object Content
         {
-            get { return browser; }
+            get { return parentPanel; }
         }
 
         public bool IsVisible

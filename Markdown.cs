@@ -658,6 +658,16 @@ namespace MarkdownSharp
         public bool SkipIncludes { get; set; }
 
         /// <summary>
+        /// When true, does not render pictures but renders a small block indicating a picture goes here.
+        /// </summary>
+        public bool HideImages { get; set; }
+
+        /// <summary>
+        /// When true, does not render pictures and does not render the small blocks where a picture would be.
+        /// </summary>
+        public bool SkipImages { get; set; }
+
+        /// <summary>
         /// Transforms the provided Markdown-formatted text to HTML;
         /// see http://en.wikipedia.org/wiki/Markdown
         /// </summary>
@@ -966,6 +976,10 @@ namespace MarkdownSharp
 
                 url = EscapeBoldItalic(url);
                 url = EncodeProblemUrlChars(url);
+
+                if (url.StartsWith("../"))
+                    url = "./" + url.TrimStart('.', '.', '/');
+
                 result = "<a href=\"" + url + "\"";
 
                 if (_titles.ContainsKey(linkID))
@@ -997,6 +1011,10 @@ namespace MarkdownSharp
 
                 url = EscapeBoldItalic(url);
                 url = EncodeProblemUrlChars(url);
+
+                if (url.StartsWith("../"))
+                    url = "./" + url.TrimStart('.', '.', '/');
+
                 result = "<a href=\"" + url + "\"";
 
                 if (_titles.ContainsKey(linkID))
@@ -1063,6 +1081,9 @@ namespace MarkdownSharp
                 url = url.Substring(1, url.Length - 2); // remove <>'s surrounding URL, if present
             url = EncodeProblemUrlChars(url);
 
+            if (url.StartsWith("../"))
+                url = "./" + url.TrimStart('.', '.', '/');
+
             result = string.Format("<a href=\"{0}\"", url);
 
             if (!String.IsNullOrEmpty(title))
@@ -1114,17 +1135,31 @@ namespace MarkdownSharp
                 url = EscapeBoldItalic(url);
                 url = EncodeProblemUrlChars(url);
                 url = ExpandRealiveUriToLocalPath(url);
-                result = string.Format("<img src=\"{0}\" alt=\"{1}\"", url, altText);
 
-                if (_titles.ContainsKey(linkID))
+                if (!SkipImages)
                 {
-                    string title = _titles[linkID];
-                    title = EscapeBoldItalic(title);
+                    if (HideImages)
+                    {
+                        //return string.Format("\n<div class=\"wa-include-start\">\nIMAGE: {0} {1}\n</div>\n", url, altText);
+                        result = string.Format("[IMG {0}]", url);
+                    }
+                    else
+                    {
+                        result = string.Format("<img src=\"{0}\" alt=\"{1}\"", url, altText);
 
-                    result += string.Format(" title=\"{0}\"", title);
+                        if (_titles.ContainsKey(linkID))
+                        {
+                            string title = _titles[linkID];
+                            title = EscapeBoldItalic(title);
+
+                            result += string.Format(" title=\"{0}\"", title);
+                        }
+
+                        result += _emptyElementSuffix;
+                    }
                 }
-
-                result += _emptyElementSuffix;
+                else
+                    return "";
             }
             else
             {
@@ -1152,15 +1187,27 @@ namespace MarkdownSharp
             url = EncodeProblemUrlChars(url);
             url = ExpandRealiveUriToLocalPath(url);
 
-            result = string.Format("<img src=\"{0}\" alt=\"{1}\"", url, alt);
-
-            if (!String.IsNullOrEmpty(title))
+            if (!SkipImages)
             {
-                title = EscapeBoldItalic(title);
-                result += string.Format(" title=\"{0}\"", title);
-            }
+                if (HideImages)
+                {
+                    result = string.Format("[IMG {0}]", url);
+                }
+                else
+                {
+                    result = string.Format("<img src=\"{0}\" alt=\"{1}\"", url, alt);
 
-            result += _emptyElementSuffix;
+                    if (!String.IsNullOrEmpty(title))
+                    {
+                        title = EscapeBoldItalic(title);
+                        result += string.Format(" title=\"{0}\"", title);
+                    }
+
+                    result += _emptyElementSuffix;
+                }
+            }
+            else
+                result = "";
 
             return result;
         }
@@ -1473,7 +1520,7 @@ namespace MarkdownSharp
             text = TablesPipeRegex.Replace(text, new MatchEvaluator(TablePipeEvaluator));
 
             // Look for unpiped tables
-            return TablesPipeRegex.Replace(text, new MatchEvaluator(TablePipeEvaluator));
+            return TablesNoPipeRegex.Replace(text, new MatchEvaluator(TablePipeEvaluator));
         }
 
         public enum TableColumnAlignment
@@ -1528,7 +1575,7 @@ namespace MarkdownSharp
                         dataString.AppendLine(ProcessTableRow(Regex.Replace(lines[i].Value, @"^ *\| *| *\| *$", "", RegexOptions.Multiline), cellTemplate, columns));
                 }
 
-                return String.Format("<table>\n<thead>\n{0}</thead>\n<tbody>\n{1}</tbody>\n</table>", header, dataString.ToString());
+                return String.Format("\n<table>\n<thead>\n{0}</thead>\n<tbody>\n{1}</tbody>\n</table>\n", header, dataString.ToString());
             }
 
             return table;
@@ -1547,21 +1594,21 @@ namespace MarkdownSharp
                     switch (columns[i])
                     {
                         case TableColumnAlignment.Left:
-                            result.AppendLine(String.Format(cellTemplate, cells[i], " align=\"left\""));
+                            result.AppendLine(String.Format(cellTemplate, RunSpanGamut(cells[i]), " align=\"left\""));
                             break;
                         case TableColumnAlignment.Center:
-                            result.AppendLine(String.Format(cellTemplate, cells[i], " align=\"center\""));
+                            result.AppendLine(String.Format(cellTemplate, RunSpanGamut(cells[i]), " align=\"center\""));
                             break;
                         case TableColumnAlignment.Right:
-                            result.AppendLine(String.Format(cellTemplate, cells[i], " align=\"right\""));
+                            result.AppendLine(String.Format(cellTemplate, RunSpanGamut(cells[i]), " align=\"right\""));
                             break;
                         default:
-                            result.AppendLine(String.Format(cellTemplate, cells[i], ""));
+                            result.AppendLine(String.Format(cellTemplate, RunSpanGamut(cells[i]), ""));
                             break;
                     }
                 }
                 else
-                    result.AppendLine(String.Format(cellTemplate, cells[i], ""));
+                    result.AppendLine(String.Format(cellTemplate, RunSpanGamut(cells[i]), ""));
             }
 
             return String.Format(rowTemplate, result.ToString());
@@ -1582,13 +1629,17 @@ namespace MarkdownSharp
 
             Markdown processor = new Markdown();
 
+            processor.HideImages = HideImages;
+            processor.HideIncludeDivs = HideIncludeDivs;
+            processor.SkipImages = SkipImages;
+            processor.SkipIncludes = SkipIncludes;
+
             string filePath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(_filePath), includeFile);
 
             if (System.IO.File.Exists(filePath))
             {
                 if (!SkipIncludes)
                 {
-
                     if (!HideIncludeDivs)
                         return string.Format("\n\n<div class=\"wa-include-start\">\nSTART OF INCLUDE: {0}\n</div>\n\n{1}\n<div class=\"wa-include-end\">END OF INCLUDE {0}</div>\n", includeFile, processor.Transform(System.IO.File.ReadAllText(filePath), filePath));
                     else
@@ -1786,6 +1837,10 @@ namespace MarkdownSharp
         private string HyperlinkEvaluator(Match match)
         {
             string link = match.Groups[1].Value;
+
+            if (link.StartsWith("../"))
+                link = link.TrimStart('.', '.', '/');
+
             return string.Format("<a href=\"{0}\">{0}</a>", link);
         }
 

@@ -105,8 +105,10 @@ namespace MarkdownMode
             if (window != null)
             {
                 if (window.CurrentSource == null || window.CurrentSource != this)
-                    UpdatePreviewWindow(previousHtml);
+                    //UpdatePreviewWindow(previousHtml);
+                    backgroundParser.RequestParse(true);
             }
+            MarkdownSettings.Parser = backgroundParser;
         }
 
         string GetDocumentName()

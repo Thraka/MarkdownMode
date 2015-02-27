@@ -42,22 +42,10 @@ namespace MarkdownMode
 
             this.Children.Add(showPreview);
 
-            Button copyHtml = new Button() { Content = "Copy HTML to clipboard" };
-            copyHtml.Click += HandleCopyHtmlClick;
-
-            this.Children.Add(copyHtml);
-
             sectionCombo = new ComboBox();
             sectionCombo.SelectionChanged += HandleSectionComboSelectionChanged;
 
             this.Children.Add(sectionCombo);
-
-            var toggleIncludes = new CheckBox() { Content = "Hide Includes" };
-            toggleIncludes.VerticalAlignment = System.Windows.VerticalAlignment.Center;
-            toggleIncludes.IsChecked = MarkdownSettings.SkipIncludeProcessing;
-            toggleIncludes.Checked += toggleIncludes_Checked;
-            toggleIncludes.Unchecked += toggleIncludes_Checked;
-            this.Children.Add(toggleIncludes);
 
             backgroundParser = textView.TextBuffer.Properties.GetOrCreateSingletonProperty(typeof(MarkdownBackgroundParser),
                 () => new MarkdownBackgroundParser(textView.TextBuffer, TaskScheduler.Default, textDocumentFactoryService));
@@ -70,16 +58,6 @@ namespace MarkdownMode
             textView.Caret.PositionChanged += HandleTextViewCaretPositionChanged;
         }
 
-        
-
-        void toggleIncludes_Checked(object sender, RoutedEventArgs e)
-        {
-            if (((CheckBox)sender).IsChecked.HasValue)
-            {
-                MarkdownSettings.SkipIncludeProcessing = ((CheckBox)sender).IsChecked.Value;
-            }
-        }
-
         void HandleShowPreviewClick(object sender, EventArgs e)
         {
             if (package != null)
@@ -88,11 +66,6 @@ namespace MarkdownMode
                 ((IVsWindowFrame)window.Frame).ShowNoActivate();
                 backgroundParser.RequestParse(true);
             }
-        }
-
-        void HandleCopyHtmlClick(object sender, EventArgs e)
-        {
-            Clipboard.SetText(GetHTMLText());
         }
 
         void HandleSectionComboSelectionChanged(object sender, EventArgs e)

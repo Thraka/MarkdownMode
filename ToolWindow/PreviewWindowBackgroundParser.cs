@@ -59,6 +59,9 @@ namespace MarkdownMode
                 .AppendLine("</head><body>");
 
             markdownTransform.SkipIncludes = MarkdownSettings.SkipIncludeProcessing;
+            markdownTransform.HideIncludeDivs = MarkdownSettings.HideIncludeDivs;
+            markdownTransform.SkipImages = MarkdownSettings.SkipImages;
+            markdownTransform.HideImages = MarkdownSettings.HideImages;
 
             html.AppendLine(markdownTransform.Transform(text, markdownDocumentPath));
             if (extraSpace)
