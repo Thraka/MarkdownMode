@@ -978,7 +978,7 @@ namespace MarkdownSharp
                 url = EncodeProblemUrlChars(url);
 
                 if (url.StartsWith("../"))
-                    url = "./" + url.TrimStart('.', '.', '/');
+                    url = "./" + url.TrimStart('.', '.', '/') + ".md";
 
                 result = "<a href=\"" + url + "\"";
 
@@ -1013,7 +1013,7 @@ namespace MarkdownSharp
                 url = EncodeProblemUrlChars(url);
 
                 if (url.StartsWith("../"))
-                    url = "./" + url.TrimStart('.', '.', '/');
+                    url = "./" + url.TrimStart('.', '.', '/') + ".md";
 
                 result = "<a href=\"" + url + "\"";
 
@@ -1082,7 +1082,7 @@ namespace MarkdownSharp
             url = EncodeProblemUrlChars(url);
 
             if (url.StartsWith("../"))
-                url = "./" + url.TrimStart('.', '.', '/');
+                url = "./" + url.TrimStart('.', '.', '/') + ".md";
 
             result = string.Format("<a href=\"{0}\"", url);
 
@@ -1839,7 +1839,7 @@ namespace MarkdownSharp
             string link = match.Groups[1].Value;
 
             if (link.StartsWith("../"))
-                link = link.TrimStart('.', '.', '/');
+                link = link.TrimStart('.', '.', '/') + ".md";
 
             return string.Format("<a href=\"{0}\">{0}</a>", link);
         }

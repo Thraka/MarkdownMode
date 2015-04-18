@@ -252,8 +252,8 @@ namespace MarkdownMode
             List<Token> tokens = new List<Token>();
 
             //
-            //text = Markdown.CodeFenceRegex.ReplaceWithDummy(text, match =>
-            text = new Regex(@"(^\r* *(`{3}|~{3})[\S\s]*^\2\r*$)", RegexOptions.Multiline).ReplaceWithDummy(text, match =>
+            text = Markdown.CodeFenceRegex.ReplaceWithDummy(text, match =>
+            //text = new Regex(@"(^\r* *(`{3}|~{3})[\S\s]*^\2\r*$)", RegexOptions.Multiline).ReplaceWithDummy(text, match =>
             {
                 string lines = match.Groups[0].Value;
                 StringBuilder buffer = new StringBuilder();
